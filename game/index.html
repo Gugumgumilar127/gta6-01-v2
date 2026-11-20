@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Palmaris Heat — a tiny open-world crime game</title>
+<style>
+  :root {
+    --gold: #ffd76a;
+    --ink: #14101d;
+    --panel: rgba(16, 12, 28, 0.72);
+    --panel-edge: rgba(255, 215, 106, 0.35);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  body {
+    background:
+      radial-gradient(1200px 700px at 50% -10%, #3b2b5e 0%, transparent 60%),
+      linear-gradient(180deg, #1b1440 0%, #2a1650 46%, #7a2d5e 78%, #c25a3f 100%);
+    font-family: "Avenir Next", "Segoe UI", system-ui, sans-serif;
+    color: #f5efe2;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    overflow: hidden;
+  }
+  #stage {
+    position: relative;
+    width: min(100vw, 177.78vh);
+    aspect-ratio: 16 / 9;
+    max-height: 100vh;
+    box-shadow: 0 24px 80px rgba(0,0,0,0.55);
+  }
+  canvas#game { width: 100%; height: 100%; display: block; background: #1d5f7d; }
+  .hud { position: absolute; pointer-events: none; z-index: 5; }
+
+  /* top-left: money + wanted */
+  #hud-left { top: 14px; left: 16px; }
+  #hud-cash { font-size: 30px; font-weight: 800; color: var(--gold); text-shadow: 0 2px 0 rgba(0,0,0,0.45); letter-spacing: 0.5px; }
+  #hud-debt { font-size: 11.5px; font-weight: 700; letter-spacing: 1.2px; opacity: 0.92; margin-top: 1px; }
+  #hud-stars { font-size: 25px; color: #ffd76a; text-shadow: 0 2px 6px rgba(0,0,0,0.6); letter-spacing: 3px; margin-top: 2px; min-height: 30px; }
+  #hud-stars.hot { color: #ff6a55; }
+  .bar-row { display: flex; align-items: center; gap: 7px; margin-top: 5px; font-size: 10.5px; font-weight: 700; letter-spacing: 1px; }
+  .bar { width: 128px; height: 9px; background: rgba(0,0,0,0.5); border: 1px solid rgba(255,255,255,0.35); border-radius: 5px; overflow: hidden; }
+  .bar > div { height: 100%; width: 100%; background: #7dd069; transition: width 0.15s; }
+  #hud-car-fill { background: #e8b93c; }
+
+  /* top-right: minimap + district + speed */
+  #hud-right { top: 14px; right: 16px; text-align: right; }
+  #minimap { width: 172px; height: 172px; border: 2px solid var(--panel-edge); border-radius: 10px; background: #1d5f7d; box-shadow: 0 6px 22px rgba(0,0,0,0.45); }
+  #hud-district { margin-top: 7px; font-size: 12.5px; font-weight: 800; letter-spacing: 1.6px; text-shadow: 0 2px 4px rgba(0,0,0,0.7); }
+  #hud-speed { font-size: 21px; font-weight: 800; color: #fff; text-shadow: 0 2px 4px rgba(0,0,0,0.7); min-height: 25px; }
+
+  /* bottom-left: objective */
+  #hud-objective {
+    left: 16px; bottom: 16px; max-width: 430px;
+    background: var(--panel); border: 1px solid var(--panel-edge); border-left: 4px solid var(--gold);
+    border-radius: 8px; padding: 10px 13px; opacity: 0; transform: translateY(8px); transition: all 0.25s;
+  }
+  #hud-objective.show { opacity: 1; transform: none; }
+  #hud-objective-text { font-size: 16.5px; font-weight: 800; }
+  #hud-objective-sub { font-size: 12.5px; opacity: 0.85; margin-top: 2px; }
+
+  /* banner */
+  #banner {
+    top: 12%; left: 50%; transform: translate(-50%, -14px); text-align: center;
+    opacity: 0; transition: all 0.3s; width: 90%;
+  }
+  #banner.show { opacity: 1; transform: translate(-50%, 0); }
+  #banner-title { font-size: 40px; font-weight: 900; letter-spacing: 3px; text-shadow: 0 3px 0 rgba(0,0,0,0.4), 0 8px 30px rgba(0,0,0,0.5); }
+  #banner-sub { font-size: 16.5px; font-weight: 600; text-shadow: 0 2px 6px rgba(0,0,0,0.8); margin-top: 3px; }
+
+  /* toast */
+  #toast {
+    bottom: 108px; left: 50%; transform: translateX(-50%) translateY(8px);
+    background: var(--panel); border: 1px solid var(--panel-edge); border-radius: 999px;
+    padding: 8px 18px; font-size: 14.5px; font-weight: 700; opacity: 0; transition: all 0.25s; white-space: nowrap;
+  }
+  #toast.show { opacity: 1; transform: translateX(-50%); }
+
+  /* prompt */
+  #prompt {
+    bottom: 64px; left: 50%; transform: translateX(-50%);
+    font-size: 15.5px; font-weight: 800; letter-spacing: 0.4px; color: var(--gold);
+    text-shadow: 0 2px 6px rgba(0,0,0,0.85); opacity: 0; transition: opacity 0.15s; white-space: nowrap;
+  }
+  #prompt.show { opacity: 1; }
+
+  /* dialogue */
+  #dialogue {
+    bottom: 16px; left: 50%; transform: translateX(-50%) translateY(10px); width: min(620px, 92%);
+    background: var(--panel); border: 1px solid var(--panel-edge); border-radius: 10px;
+    padding: 11px 16px; opacity: 0; transition: all 0.25s;
+  }
+  #dialogue.show { opacity: 1; transform: translateX(-50%); }
+  #dialogue-from { font-size: 11.5px; font-weight: 800; letter-spacing: 1.6px; color: var(--gold); }
+  #dialogue-text { font-size: 15.5px; margin-top: 3px; line-height: 1.35; }
+
+  /* bust meter */
+  #bust { top: 64px; left: 50%; transform: translateX(-50%); text-align: center; opacity: 0; transition: opacity 0.2s; }
+  #bust.show { opacity: 1; }
+  #bust span { font-size: 13px; font-weight: 900; letter-spacing: 3px; color: #ff6a55; text-shadow: 0 2px 6px rgba(0,0,0,0.8); }
+  #bust .bar { width: 220px; height: 11px; margin-top: 4px; }
+  #bust-fill { background: #ff5147; width: 0%; height: 100%; }
+
+  /* damage flash */
+  #damage-flash { inset: 0; background: radial-gradient(ellipse at center, transparent 52%, rgba(200,30,20,0.5) 100%); opacity: 0; }
+  #damage-flash.go { animation: flash 0.45s ease-out; }
+  @keyframes flash { 0% { opacity: 1; } 100% { opacity: 0; } }
+
+  /* full screen states */
+  #screen {
+    inset: 0; display: none; flex-direction: column; align-items: center; justify-content: center;
+    text-align: center; padding: 30px; z-index: 9; pointer-events: auto;
+    background: linear-gradient(180deg, rgba(20,12,38,0.62) 0%, rgba(20,12,38,0.82) 100%);
+  }
+  #screen.show { display: flex; }
+  .screen-title { font-size: 64px; font-weight: 900; letter-spacing: 5px; color: var(--gold); text-shadow: 0 4px 0 rgba(0,0,0,0.45), 0 14px 44px rgba(0,0,0,0.6); }
+  .screen-title.busted { color: #57b6e8; }
+  .screen-title.wasted { color: #ff5147; }
+  .screen-title.complete { color: #7dd069; }
+  #screen-body { max-width: 620px; font-size: 17px; line-height: 1.5; margin-top: 14px; }
+  #screen-body .tagline { font-size: 20px; font-weight: 700; color: #ffe9a3; }
+  #screen-body .controls { margin-top: 14px; font-size: 13.5px; opacity: 0.8; letter-spacing: 0.4px; }
+  #screen-buttons { margin-top: 24px; display: flex; gap: 14px; }
+  #screen-buttons button {
+    pointer-events: auto; cursor: pointer; border: 2px solid var(--gold); background: rgba(20,16,29,0.85);
+    color: var(--gold); font-size: 16.5px; font-weight: 800; letter-spacing: 1.4px;
+    padding: 12px 26px; border-radius: 999px; transition: all 0.15s;
+  }
+  #screen-buttons button:hover { background: var(--gold); color: var(--ink); transform: translateY(-2px); }
+</style>
+</head>
+<body>
+<div id="stage">
+  <canvas id="game" width="1280" height="720"></canvas>
+
+  <div class="hud" id="hud-left">
+    <div id="hud-cash">$0</div>
+    <div id="hud-debt">DEBT PAID $0 / $14,000</div>
+    <div id="hud-stars"></div>
+    <div class="bar-row"><span>HEALTH</span><div class="bar"><div id="hud-health-fill"></div></div></div>
+    <div class="bar-row" id="hud-car-row" style="display:none"><span>RIDE</span><div class="bar"><div id="hud-car-fill"></div></div></div>
+  </div>
+
+  <div class="hud" id="hud-right">
+    <canvas id="minimap" width="196" height="196"></canvas>
+    <div id="hud-district">PALMARIS</div>
+    <div id="hud-speed"></div>
+  </div>
+
+  <div class="hud" id="hud-objective">
+    <div id="hud-objective-text"></div>
+    <div id="hud-objective-sub"></div>
+  </div>
+
+  <div class="hud" id="banner">
+    <div id="banner-title"></div>
+    <div id="banner-sub"></div>
+  </div>
+
+  <div class="hud" id="bust"><span>BUSTED</span><div class="bar"><div id="bust-fill"></div></div></div>
+  <div class="hud" id="toast"></div>
+  <div class="hud" id="prompt"></div>
+  <div class="hud" id="dialogue">
+    <div id="dialogue-from"></div>
+    <div id="dialogue-text"></div>
+  </div>
+  <div class="hud" id="damage-flash"></div>
+
+  <div class="hud" id="screen">
+    <div class="screen-title" id="screen-title"></div>
+    <div id="screen-body"></div>
+    <div id="screen-buttons"></div>
+  </div>
+</div>
+
+<script type="module" src="./src/main.js"></script>
+</body>
+</html>
